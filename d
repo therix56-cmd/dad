@@ -1,5 +1,5 @@
 -- ==============================================================
--- BRAINROT NOTIFY + MULTI-PET ESP + SMART HOPPER (KOMBINIERT)
+-- BRAINROT NOTIFY + MULTI-PET ESP + SMART HOPPER + BLACKSCREEN (KOMBINIERT)
 -- ==============================================================
 
 local Players = game:GetService("Players")
@@ -7,6 +7,8 @@ local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
 local UIS = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
 
 local function waitLP()
     local p = Players.LocalPlayer
@@ -14,6 +16,13 @@ local function waitLP()
     return p
 end
 local LP = waitLP()
+
+-- ==============================================================
+-- BLACKSCREEN KONFIGURATION
+-- ==============================================================
+
+local BLACKSCREEN_ENABLED = false
+local BLACKSCREEN_KEY = Enum.KeyCode.Delete
 
 -- ==============================================================
 -- BRAINROT ESP KONFIGURATION
@@ -44,6 +53,111 @@ local PLACE_ID_OVERRIDE = nil
 local RETRY_DELAY = 3.0
 local QUICK_RECONNECT = 1.0
 local MAX_LOAD_WAIT = 30
+
+-- ==============================================================
+-- BLACKSCREEN SYSTEM
+-- ==============================================================
+
+local blackscreenGui = nil
+
+local function createBlackscreen()
+    local PlayerGui = LP:WaitForChild("PlayerGui")
+    
+    if PlayerGui:FindFirstChild("BlackscreenGUI") then
+        PlayerGui.BlackscreenGUI:Destroy()
+    end
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "BlackscreenGUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 999999
+    
+    local blackFrame = Instance.new("Frame")
+    blackFrame.Name = "BlackFrame"
+    blackFrame.Size = UDim2.new(1, 0, 1, 0)
+    blackFrame.Position = UDim2.new(0, 0, 0, 0)
+    blackFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+    blackFrame.BorderSizePixel = 0
+    blackFrame.ZIndex = 999999
+    blackFrame.Parent = screenGui
+    
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Name = "InfoLabel"
+    infoLabel.Size = UDim2.new(0, 300, 0, 50)
+    infoLabel.Position = UDim2.new(0.5, -150, 0.5, -25)
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Text = "Blackscreen aktiv - CPU gespart"
+    infoLabel.TextColor3 = Color3.new(0.5, 0.5, 0.5)
+    infoLabel.TextSize = 20
+    infoLabel.Font = Enum.Font.SourceSans
+    infoLabel.Parent = blackFrame
+    
+    screenGui.Parent = PlayerGui
+    blackscreenGui = screenGui
+    
+    print("✅ Blackscreen aktiviert!")
+end
+
+local function destroyBlackscreen()
+    if blackscreenGui then
+        pcall(function() blackscreenGui:Destroy() end)
+        blackscreenGui = nil
+    end
+    
+    local PlayerGui = LP:WaitForChild("PlayerGui")
+    if PlayerGui:FindFirstChild("BlackscreenGUI") then
+        PlayerGui.BlackscreenGUI:Destroy()
+    end
+    
+    print("✅ Blackscreen deaktiviert!")
+end
+
+local function optimizeGraphics()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 100
+    Lighting.Brightness = 0
+    
+    for _, effect in pairs(Lighting:GetChildren()) do
+        if effect:IsA("PostEffect") then
+            effect.Enabled = false
+        end
+    end
+    
+    if settings():FindFirstChild("Rendering") then
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    end
+    
+    if setfpscap then
+        setfpscap(20)
+        print("✅ FPS auf 20 begrenzt!")
+    end
+    
+    print("✅ Grafik-Optimierungen aktiviert!")
+end
+
+local function restoreGraphics()
+    Lighting.GlobalShadows = true
+    Lighting.Brightness = 2
+    
+    if setfpscap then
+        setfpscap(0)
+    end
+    
+    print("✅ Grafik-Einstellungen wiederhergestellt!")
+end
+
+local function enableBlackscreen()
+    createBlackscreen()
+    optimizeGraphics()
+    BLACKSCREEN_ENABLED = true
+end
+
+local function disableBlackscreen()
+    destroyBlackscreen()
+    restoreGraphics()
+    BLACKSCREEN_ENABLED = false
+end
 
 -- ==============================================================
 -- HELPER FUNKTIONEN (BRAINROT ESP)
@@ -510,6 +624,13 @@ UIS.InputBegan:Connect(function(io, gp)
     if io.KeyCode == TELEPORT_KEY then 
         tpToHighestBrainrot()
     end
+    if io.KeyCode == BLACKSCREEN_KEY then
+        if BLACKSCREEN_ENABLED then
+            disableBlackscreen()
+        else
+            enableBlackscreen()
+        end
+    end
 end)
 
 -- ==============================================================
@@ -844,6 +965,7 @@ end)
 print("========================================")
 print("✅ Multi-Pet ESP geladen! Zeigt alle Pets über 10M $/s")
 print("⌨️ Drücke N zum Teleport zum höchsten Pet")
+print("⌨️ Drücke DELETE zum Blackscreen An/Aus")
 print("========================================")
 print('[HOP] ========================================')
 print('[HOP] ⚡ SMART HOPPER v2')
