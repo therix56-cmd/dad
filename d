@@ -29,12 +29,15 @@ local BLACKSCREEN_KEY = Enum.KeyCode.Delete
 -- ==============================================================
 
 local WEBHOOK_URL = "https://ptb.discord.com/api/webhooks/1439694792417218754/ZIN_3W5IkQi7PlIjhpgFDYUJXAbU8XFNmX0JEO-7MWQ5Yj6NN4Iv26Gsi9qA4goKud0l"
+local WEBHOOK_URL_1M_10M = "https://ptb.discord.com/api/webhooks/1442623003308593252/Q_soe0qt2RqoqzoabdQLpZoh3jynxnayiLZh1Za5lVW3RSnxrus24xZyeu0hRY_CU1Yk"
 local hasNotified = false
+local hasNotified1M = false
 
 ESP_REFRESH = ESP_REFRESH or 0.40
 CURRENT_BRAINROTS = CURRENT_BRAINROTS or {}
 ESP_ENABLED = true
 MIN_MPS_THRESHOLD = 10000000
+MIN_MPS_THRESHOLD_1M = 1000000
 
 local MODEL_SIZE_MAX = 200
 local BOX_ALPHA = 0.70
@@ -295,11 +298,12 @@ local function chooseMainTitleInGui(gui)
 end
 
 -- ==============================================================
--- BRAINROT FINDEN
+-- BRAINROT FINDEN (MIT 1M-10M UNTERSTÜTZUNG)
 -- ==============================================================
 
 local function findAllBrainrots()
     local brainrots = {}
+    local brainrots1M = {}
     
     for _, gui in ipairs(Workspace:GetDescendants()) do
         if gui:IsA("BillboardGui") then
@@ -318,24 +322,31 @@ local function findAllBrainrots()
                 
                 local name = chooseMainTitleInGui(gui)
                 
-                if name and mps and mps >= MIN_MPS_THRESHOLD then
+                if name and mps then
                     local id = tostring(root:GetDebugId())
-                    table.insert(brainrots, {
+                    local brainrotData = {
                         id = id,
                         name = name,
                         mps = mps,
                         mpsFormatted = shortMoney(mps),
                         model = mdl,
                         root = root
-                    })
+                    }
+                    
+                    if mps >= MIN_MPS_THRESHOLD then
+                        table.insert(brainrots, brainrotData)
+                    elseif mps >= MIN_MPS_THRESHOLD_1M and mps < MIN_MPS_THRESHOLD then
+                        table.insert(brainrots1M, brainrotData)
+                    end
                 end
             end
         end
     end
     
     table.sort(brainrots, function(a, b) return a.mps > b.mps end)
+    table.sort(brainrots1M, function(a, b) return a.mps > b.mps end)
     
-    return brainrots
+    return brainrots, brainrots1M
 end
 
 -- ==============================================================
@@ -429,12 +440,10 @@ local function ensureMainBillboard(id, name, amount, targetRoot)
 end
 
 -- ==============================================================
--- WEBHOOK SYSTEM
+-- WEBHOOK SYSTEM (MIT 1M-10M SUPPORT)
 -- ==============================================================
 
-local function sendWebhook(brainrotData)
-    if hasNotified then return end
-    
+local function sendWebhook(brainrotData, webhookUrl)
     local realJobId = game.JobId
     local playerCountText = tostring(#Players:GetPlayers()) .. "/" .. tostring(game:GetService("Players").MaxPlayers or 8)
 
@@ -494,7 +503,7 @@ local function sendWebhook(brainrotData)
     local success, result = pcall(function()
         if syn and syn.request then
             return syn.request({
-                Url = WEBHOOK_URL,
+                Url = webhookUrl,
                 Method = "POST",
                 Headers = { ["Content-Type"] = "application/json" },
                 Body = jsonData
@@ -503,7 +512,7 @@ local function sendWebhook(brainrotData)
         
         if request then
             return request({
-                Url = WEBHOOK_URL,
+                Url = webhookUrl,
                 Method = "POST",
                 Headers = { ["Content-Type"] = "application/json" },
                 Body = jsonData
@@ -512,18 +521,17 @@ local function sendWebhook(brainrotData)
         
         if http_request then
             return http_request({
-                Url = WEBHOOK_URL,
+                Url = webhookUrl,
                 Method = "POST",
                 Headers = { ["Content-Type"] = "application/json" },
                 Body = jsonData
             })
         end
         
-        return HttpService:PostAsync(WEBHOOK_URL, jsonData)
+        return HttpService:PostAsync(webhookUrl, jsonData)
     end)
 
     if success then
-        hasNotified = true
         warn("✅ Webhook erfolgreich gesendet!")
     else
         warn("❌ Webhook Fehler: " .. tostring(result))
@@ -543,7 +551,7 @@ task.spawn(function()
         if ESP_ENABLED then
             if not wasEnabled then wasEnabled = true end
 
-            local brainrots = findAllBrainrots()
+            local brainrots, brainrots1M = findAllBrainrots()
             local currentIDs = {}
             
             for _, br in ipairs(brainrots) do
@@ -634,7 +642,7 @@ UIS.InputBegan:Connect(function(io, gp)
 end)
 
 -- ==============================================================
--- WEBHOOK EINMAL BEIM START
+-- WEBHOOK EINMAL BEIM START (MIT 1M-10M SUPPORT)
 -- ==============================================================
 
 task.spawn(function()
@@ -643,9 +651,10 @@ task.spawn(function()
     
     task.wait(3)
     
-    local allBrainrots = findAllBrainrots()
+    local allBrainrots, allBrainrots1M = findAllBrainrots()
     
-    if #allBrainrots > 0 then
+    -- Webhook für 10M+ Pets
+    if #allBrainrots > 0 and not hasNotified then
         local best = allBrainrots[1]
         local webhookData = {
             name = best.name,
@@ -662,9 +671,40 @@ task.spawn(function()
             end
         end
         
-        sendWebhook(webhookData)
+        local success = sendWebhook(webhookData, WEBHOOK_URL)
+        if success then
+            hasNotified = true
+            warn("✅ 10M+ Webhook gesendet!")
+        end
     else
         warn("❌ Keine Brainrots über 10M/s gefunden")
+    end
+    
+    -- Webhook für 1M-10M Pets
+    if #allBrainrots1M > 0 and not hasNotified1M then
+        local best1M = allBrainrots1M[1]
+        local webhookData1M = {
+            name = best1M.name,
+            mpsFormatted = best1M.mpsFormatted
+        }
+        
+        if #allBrainrots1M > 1 then
+            webhookData1M.otherBrainrots = {}
+            for i = 2, math.min(#allBrainrots1M, 5) do
+                table.insert(webhookData1M.otherBrainrots, {
+                    name = allBrainrots1M[i].name,
+                    mps = allBrainrots1M[i].mpsFormatted
+                })
+            end
+        end
+        
+        local success1M = sendWebhook(webhookData1M, WEBHOOK_URL_1M_10M)
+        if success1M then
+            hasNotified1M = true
+            warn("✅ 1M-10M Webhook gesendet!")
+        end
+    else
+        warn("❌ Keine Brainrots zwischen 1M-10M/s gefunden")
     end
 end)
 
